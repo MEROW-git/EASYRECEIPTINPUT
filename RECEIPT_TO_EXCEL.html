@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt Data Exporter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #111827; /* Dark background */
+            transition: background-color 0.3s ease;
+            overflow: hidden; /* Hide scrollbars */
+        }
+
+        #starfield {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            cursor: none;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(22, 163, 74, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+        }
+        
+        .main-container {
+            background: rgba(31, 41, 55, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            animation: float 6s ease-in-out infinite;
+            transition: background-color 0.3s ease, border-color 0.3s ease;
+        }
+        
+        .download-button.ready {
+            animation: pulse 2s infinite;
+        }
+        
+        /* Light Mode Styles */
+        body.light-mode {
+            background: #f0f9ff;
+        }
+        .light-mode .main-container {
+            background: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        .light-mode .text-white { color: #1f2937; }
+        .light-mode .text-gray-400 { color: #6b7280; }
+        .light-mode .text-gray-300 { color: #4b5563; }
+        .light-mode .border-gray-700 { border-color: #d1d5db; }
+        .light-mode .bg-gray-700 { background-color: #f9fafb; }
+        .light-mode .bg-gray-800 { background-color: #ffffff; }
+        .light-mode .hover\:bg-gray-600:hover { background-color: #f3f4f6; }
+        .light-mode .text-red-500 { color: #dc2626; }
+        .light-mode .table-container::-webkit-scrollbar-track { background: #e5e7eb; }
+        .light-mode .table-container::-webkit-scrollbar-thumb { background: #9ca3af; }
+
+        .table-container {
+            max-height: 40vh;
+            overflow-y: auto;
+        }
+        .dark .table-container::-webkit-scrollbar-track { background: #2d3748; }
+        .dark .table-container::-webkit-scrollbar-thumb { background: #4a5568; }
+
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <canvas id="starfield"></canvas>
+
+    <div class="main-container relative w-full max-w-2xl mx-auto rounded-2xl shadow-2xl p-8 md:p-12">
+        <button id="theme-toggle" class="absolute top-4 right-4 p-2 rounded-full text-gray-400 hover:bg-gray-700/50 hover:text-yellow-300 transition-colors">
+            <svg id="theme-icon-moon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+            <svg id="theme-icon-sun" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+        </button>
+
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-white">Receipt Data Entry</h1>
+            <p class="text-gray-400 mt-2">Add your receipt details below. When you're finished, you can download the data as an Excel file.</p>
+        </div>
+        
+        <form id="receiptForm" class="space-y-6 border-b border-gray-700 pb-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label for="receiptId" class="block text-sm font-medium text-gray-300 mb-1">Receipt ID</label>
+                    <input type="text" id="receiptId" name="receiptId" required placeholder="e.g., INV-00123" class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                </div>
+                <div>
+                    <label for="price" class="block text-sm font-medium text-gray-300 mb-1">Price ($)</label>
+                    <input type="number" step="0.01" id="price" name="price" required placeholder="e.g., 19.99" class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+                </div>
+                <div>
+                    <label for="receiptDate" class="block text-sm font-medium text-gray-300 mb-1">Date of Receipt</label>
+                    <input type="date" id="receiptDate" name="receiptDate" required class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition" style="color-scheme: dark;">
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" id="addButton" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 flex items-center justify-center">
+                    Add Receipt to List
+                </button>
+            </div>
+        </form>
+
+        <div>
+            <div class="flex flex-wrap gap-4 justify-between items-center mb-4">
+                 <h2 class="text-xl font-semibold text-gray-200">Receipt List (<span id="receiptCount">0</span>)</h2>
+                 <button id="downloadButton" disabled class="download-button bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-500 focus:ring-opacity-50 transition duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                    Download as Excel
+                </button>
+            </div>
+           
+            <div class="table-container border border-gray-700 rounded-lg">
+                <table class="w-full text-sm text-left text-gray-400">
+                    <thead class="text-xs uppercase bg-gray-700 text-gray-400 sticky top-0">
+                        <tr>
+                            <th scope="col" class="px-6 py-3">#</th>
+                            <th scope="col" class="px-6 py-3">Receipt ID</th>
+                            <th scope="col" class="px-6 py-3">Price</th>
+                            <th scope="col" class="px-6 py-3">Date</th>
+                            <th scope="col" class="px-6 py-3 text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receiptsTableBody">
+                       <tr id="emptyStateRow">
+                           <td colspan="5" class="text-center py-10">No receipts added yet.</td>
+                       </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('receiptForm');
+        const receiptsTableBody = document.getElementById('receiptsTableBody');
+        const downloadButton = document.getElementById('downloadButton');
+        const receiptCountSpan = document.getElementById('receiptCount');
+        const emptyStateRow = document.getElementById('emptyStateRow');
+        const themeToggleButton = document.getElementById('theme-toggle');
+        const moonIcon = document.getElementById('theme-icon-moon');
+        const sunIcon = document.getElementById('theme-icon-sun');
+        const canvas = document.getElementById('starfield');
+        const ctx = canvas.getContext('2d');
+        let stars = [];
+        let mouse = { x: null, y: null };
+
+        // --- Starfield Background ---
+        window.addEventListener('mousemove', (event) => {
+            mouse.x = event.clientX;
+            mouse.y = event.clientY;
+        });
+        window.addEventListener('mouseout', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        function setupStarfield() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            stars = [];
+            let starCount = window.innerWidth > 768 ? 400 : 150;
+            for (let i = 0; i < starCount; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    radius: Math.random() * 1.5 + 0.5,
+                    vx: (Math.random() - 0.5) * 0.3,
+                    vy: (Math.random() - 0.5) * 0.3,
+                });
+            }
+        }
+
+        function drawStarfield() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const isLightMode = document.body.classList.contains('light-mode');
+            ctx.fillStyle = isLightMode ? 'rgba(0, 119, 255, 0.8)' : 'white';
+            ctx.beginPath();
+            for (let i = 0, l = stars.length; i < l; i++) {
+                const s = stars[i];
+                ctx.moveTo(s.x, s.y);
+                ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2, true);
+            }
+            ctx.fill();
+        }
+
+        function updateStarfield() {
+            for (let i = 0, l = stars.length; i < l; i++) {
+                const s = stars[i];
+                if (mouse.x && mouse.y) {
+                    const dx = s.x - mouse.x;
+                    const dy = s.y - mouse.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const repulsionRadius = 100;
+                    if (distance < repulsionRadius) {
+                        const force = (repulsionRadius - distance) / repulsionRadius;
+                        const angle = Math.atan2(dy, dx);
+                        s.x += Math.cos(angle) * force * 1.5;
+                        s.y += Math.sin(angle) * force * 1.5;
+                    }
+                }
+                s.x += s.vx;
+                s.y += s.vy;
+                if (s.x < 0) s.x = canvas.width;
+                if (s.x > canvas.width) s.x = 0;
+                if (s.y < 0) s.y = canvas.height;
+                if (s.y > canvas.height) s.y = 0;
+            }
+        }
+        
+        function animateStarfield() {
+            drawStarfield();
+            updateStarfield();
+            requestAnimationFrame(animateStarfield);
+        }
+
+        window.addEventListener('resize', setupStarfield);
+        setupStarfield();
+        animateStarfield();
+
+        // --- Theme Management ---
+        function applyTheme(theme) {
+            if (theme === 'light') {
+                document.body.classList.add('light-mode');
+                moonIcon.classList.add('hidden');
+                sunIcon.classList.remove('hidden');
+            } else {
+                document.body.classList.remove('light-mode');
+                moonIcon.classList.remove('hidden');
+                sunIcon.classList.add('hidden');
+            }
+            drawStarfield();
+        }
+
+        themeToggleButton.addEventListener('click', () => {
+            const isLight = document.body.classList.toggle('light-mode');
+            const newTheme = isLight ? 'light' : 'dark';
+            localStorage.setItem('theme', newTheme);
+            applyTheme(newTheme);
+        });
+        
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        applyTheme(savedTheme);
+        
+        // --- App Logic ---
+        function saveReceipts() {
+            localStorage.setItem('receipts', JSON.stringify(receipts));
+        }
+        
+        let receipts = JSON.parse(localStorage.getItem('receipts')) || [];
+
+        renderReceipts();
+        document.getElementById('receiptDate').valueAsDate = new Date();
+        
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const receipt = {
+                "Receipt ID": formData.get('receiptId'),
+                "Price": parseFloat(formData.get('price')),
+                "Date": formData.get('receiptDate'),
+            };
+            receipts.push(receipt);
+            saveReceipts();
+            renderReceipts();
+            form.reset();
+            document.getElementById('receiptDate').valueAsDate = new Date();
+        });
+
+        downloadButton.addEventListener('click', () => {
+            const wb = XLSX.utils.book_new();
+            const dataForExport = receipts.map((receipt, index) => ({
+                '#': index + 1,
+                'Receipt ID': receipt['Receipt ID'],
+                'Price': receipt['Price'],
+                'Date': receipt['Date'],
+            }));
+            const ws = XLSX.utils.json_to_sheet(dataForExport);
+            XLSX.utils.book_append_sheet(wb, ws, "Receipts");
+            XLSX.writeFile(wb, "receipts.xlsx");
+        });
+        
+        receiptsTableBody.addEventListener('click', (e) => {
+            if (e.target.closest('.remove-btn')) {
+                const index = e.target.closest('.remove-btn').dataset.index;
+                receipts.splice(index, 1);
+                saveReceipts();
+                renderReceipts();
+            }
+        });
+
+        function renderReceipts() {
+            receiptsTableBody.innerHTML = '';
+            
+            if (receipts.length === 0) {
+                receiptsTableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10">No receipts added yet.</td></tr>`;
+                downloadButton.disabled = true;
+                 downloadButton.classList.remove('ready');
+            } else {
+                receipts.forEach((receipt, index) => {
+                    const row = document.createElement('tr');
+                    row.className = 'bg-gray-800 border-b border-gray-700 hover:bg-gray-600';
+                    row.innerHTML = `
+                        <th scope="row" class="px-6 py-4 font-medium text-white">${index + 1}</th>
+                        <td class="px-6 py-4">${receipt["Receipt ID"]}</td>
+                        <td class="px-6 py-4">$${receipt["Price"].toFixed(2)}</td>
+                        <td class="px-6 py-4">${receipt["Date"]}</td>
+                        <td class="px-6 py-4 text-right">
+                            <button class="remove-btn text-red-500 hover:underline" data-index="${index}">Remove</button>
+                        </td>
+                    `;
+                    receiptsTableBody.appendChild(row);
+                });
+                downloadButton.disabled = false;
+                downloadButton.classList.add('ready');
+            }
+            
+            receiptCountSpan.textContent = receipts.length;
+        }
+    </script>
+</body>
+</html>
+
